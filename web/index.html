@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>任意进制互转</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    background: linear-gradient(135deg, #1e1e2f 0%, #2d2b55 100%);
+    font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+    color: #e8e8f0; padding: 20px;
+  }
+  .card {
+    width: 100%; max-width: 480px; background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.12); border-radius: 18px;
+    padding: 32px; backdrop-filter: blur(10px);
+    box-shadow: 0 20px 60px rgba(0,0,0,0.45);
+  }
+  h1 { margin: 0 0 4px; font-size: 21px; font-weight: 600; letter-spacing: 0.5px; }
+  .sub { font-size: 12.5px; color: #9a9ab5; margin-bottom: 24px; }
+  .row { display: flex; gap: 12px; margin-bottom: 16px; }
+  .field { flex: 1; }
+  label { display: block; font-size: 12px; color: #9a9ab5; margin-bottom: 6px; letter-spacing: 0.4px; }
+  input {
+    width: 100%; padding: 11px 14px; font-size: 15px;
+    background: rgba(0,0,0,0.28); border: 1px solid rgba(255,255,255,0.14);
+    border-radius: 10px; color: #fff; outline: none; transition: 0.2s;
+    font-family: "SF Mono", Consolas, monospace;
+  }
+  input:focus { border-color: #7c6cff; box-shadow: 0 0 0 3px rgba(124,108,255,0.22); }
+  input::placeholder { color: #55556e; }
+  .swap {
+    align-self: flex-end; margin-bottom: 11px; width: 40px; height: 40px;
+    border-radius: 10px; border: 1px solid rgba(255,255,255,0.14);
+    background: rgba(255,255,255,0.07); color: #b9b9d4; font-size: 17px;
+    cursor: pointer; transition: 0.2s; flex: 0 0 auto;
+  }
+  .swap:hover { background: #7c6cff; color: #fff; border-color: #7c6cff; }
+  .go {
+    width: 100%; padding: 13px; margin-top: 6px; border: none; border-radius: 10px;
+    background: linear-gradient(135deg, #7c6cff, #a06cff); color: #fff;
+    font-size: 15px; font-weight: 600; cursor: pointer; transition: 0.2s;
+  }
+  .go:hover { filter: brightness(1.12); transform: translateY(-1px); }
+  .go:active { transform: translateY(0); }
+  .out {
+    margin-top: 20px; padding: 16px; border-radius: 10px; min-height: 62px;
+    background: rgba(0,0,0,0.32); border: 1px solid rgba(255,255,255,0.1);
+    font-family: "SF Mono", Consolas, monospace; font-size: 17px;
+    word-break: break-all; line-height: 1.55; color: #7ef0c0;
+  }
+  .out .label { display: block; font-size: 11px; color: #9a9ab5; margin-bottom: 7px;
+    font-family: inherit; letter-spacing: 0.6px; }
+  .err { color: #ff8f8f !important; }
+  .tip { margin-top: 12px; font-size: 11.5px; color: #6e6e8a; line-height: 1.6; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>任意进制互转</h1>
+  <div class="sub">支持 2 ~ 36 进制 · 整数与小数 · 精确大数运算</div>
+
+  <div class="row">
+    <div class="field">
+      <label>源进制</label>
+      <input id="from" type="number" min="2" max="36" value="7">
+    </div>
+    <button class="swap" id="swap" title="交换进制">⇄</button>
+    <div class="field">
+      <label>目标进制</label>
+      <input id="to" type="number" min="2" max="36" value="17">
+    </div>
+  </div>
+
+  <div class="field" style="margin-bottom:16px">
+    <label>待转换的数值</label>
+    <input id="num" type="text" placeholder="例如 1234.56" value="1234.56">
+  </div>
+
+  <button class="go" id="go">转 换</button>
+
+  <div class="out" id="out"><span class="label">结果</span>—</div>
+  <div class="tip">数字使用 0-9、A-Z；小数若为无限循环，默认保留 30 位。</div>
+</div>
+
+<script>
+const DIGITS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+function digitVal(ch, base) {
+  const d = DIGITS.indexOf(ch);
+  if (d < 0 || d >= base) throw new Error(`字符 "${ch}" 不是合法的 ${base} 进制数字`);
+  return BigInt(d);
+}
+
+function convert(str, fromBase, toBase, maxFrac = 30) {
+  if (fromBase < 2 || fromBase > 36) throw new Error("源进制需在 2~36 之间");
+  if (toBase < 2 || toBase > 36) throw new Error("目标进制需在 2~36 之间");
+
+  const FB = BigInt(fromBase), TB = BigInt(toBase);
+  str = String(str).trim().toUpperCase().replace(/[_\s]/g, "");
+  if (!str) throw new Error("请输入数值");
+
+  let neg = false;
+  if (str[0] === "+" || str[0] === "-") { neg = str[0] === "-"; str = str.slice(1); }
+
+  const parts = str.split(".");
+  if (parts.length > 2) throw new Error("小数点过多");
+  const intStr = parts[0] || "0";
+  const fracStr = parts[1] || "";
+
+  // 解析整数部分
+  let intVal = 0n;
+  for (const ch of intStr) intVal = intVal * FB + digitVal(ch, fromBase);
+
+  // 解析小数部分 -> 分数 num/den
+  let num = 0n, den = 1n;
+  for (const ch of fracStr) { num = num * FB + digitVal(ch, fromBase); den *= FB; }
+
+  // 输出整数部分
+  let out = "";
+  let ip = intVal;
+  if (ip === 0n) out = "0";
+  else {
+    const buf = [];
+    while (ip > 0n) { buf.push(DIGITS[Number(ip % TB)]); ip /= TB; }
+    out = buf.reverse().join("");
+  }
+
+  // 输出小数部分
+  if (num > 0n) {
+    const buf = [];
+    for (let i = 0; i < maxFrac && num > 0n; i++) {
+      num *= TB;
+      buf.push(DIGITS[Number(num / den)]);
+      num %= den;
+    }
+    out += "." + buf.join("");
+  }
+
+  if (out === "0" && num === 0n) return "0";
+  return (neg ? "-" : "") + out;
+}
+
+// ---------- 界面逻辑 ----------
+const $from = document.getElementById("from");
+const $to = document.getElementById("to");
+const $num = document.getElementById("num");
+const $out = document.getElementById("out");
+
+function run() {
+  try {
+    const fb = parseInt($from.value, 10);
+    const tb = parseInt($to.value, 10);
+    if (isNaN(fb) || isNaN(tb)) throw new Error("请输入有效的进制数字");
+    const res = convert($num.value, fb, tb);
+    $out.className = "out";
+    $out.innerHTML = `<span class="label">${fb} 进制 → ${tb} 进制</span>${res}`;
+  } catch (e) {
+    $out.className = "out err";
+    $out.innerHTML = `<span class="label">错误</span>${e.message}`;
+  }
+}
+
+document.getElementById("go").onclick = run;
+document.getElementById("swap").onclick = () => {
+  const t = $from.value; $from.value = $to.value; $to.value = t;
+  try {
+    const fb = parseInt($from.value, 10), tb = parseInt($to.value, 10);
+    $num.value = convert($num.value, tb, fb);
+  } catch (e) {}
+  run();
+};
+document.querySelectorAll("input").forEach(el => {
+  el.addEventListener("keydown", e => { if (e.key === "Enter") run(); });
+});
+run();
+</script>
+</body>
+</html>
